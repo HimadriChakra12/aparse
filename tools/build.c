@@ -1,5 +1,5 @@
 /* build.c -- concatenates src/ modules in dependency order into
- * dist/hls-saver.user.js, prepends the userscript header, and substitutes
+ * dist/aparse.user.js, prepends the userscript header, and substitutes
  * __HLS_SAVER_VERSION__ with the contents of tools/VERSION.
  *
  * Replaces tools/build.js (Node) so the whole project has no JS runtime
@@ -35,7 +35,7 @@ static const char *ORDER[] = {
 static const char *HEADER_TEMPLATE =
     "// ==UserScript==\n"
     "// @name         Apars Classroom HLS Saver\n"
-    "// @namespace    apars-hls-saver\n"
+    "// @namespace    apars-aparse\n"
     "// @version      %s\n"
     "// @description  Download 720p HLS stream (forced level select + ffmpeg.wasm remux)\n"
     "// @match        https://*.aparsclassroom.com/*\n"
@@ -129,12 +129,12 @@ int main(void) {
         exit(1);
     }
 
-    FILE *f = fopen("dist/hls-saver.user.js", "wb");
-    if (!f) { perror("fopen dist/hls-saver.user.js"); exit(1); }
+    FILE *f = fopen("dist/aparse.user.js", "wb");
+    if (!f) { perror("fopen dist/aparse.user.js"); exit(1); }
     fwrite(out, 1, out_len, f);
     fclose(f);
 
-    printf("Built dist/hls-saver.user.js (%zu bytes, %zu modules, v%s)\n",
+    printf("Built dist/aparse.user.js (%zu bytes, %zu modules, v%s)\n",
            out_len, ORDER_COUNT, version);
 
     free(out);

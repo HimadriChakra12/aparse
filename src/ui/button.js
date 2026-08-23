@@ -1,0 +1,79 @@
+(function(){
+const NS = window.__hlsSaver;
+
+function findButton(){
+    const icon = document.querySelector('svg.lucide-download');
+    if(!icon) return null;
+    const b = icon.closest('.flex-1');
+    if(!b || !/download/i.test(b.textContent)) return null;
+    return b;
+}
+
+function updateButton(text){
+    if(!NS.downloadButton) return;
+    const spans = NS.downloadButton.querySelectorAll('span');
+    for(const s of spans){
+        const v = s.textContent.trim().toLowerCase();
+        if(v === 'download' || /^(finding|downloading|preparing|writing|remuxing|loading|remux|retrying|cancelling)/.test(v)){
+            s.textContent = text;
+            return;
+        }
+    }
+}
+
+function setBusy(v){
+    NS.busy = v;
+    if(!NS.downloadButton) return;
+    NS.downloadButton.style.opacity = v ? '0.6' : '';
+    NS.downloadButton.style.pointerEvents = v ? 'none' : '';
+}
+
+function attachButton(b){
+    if(!b || b.dataset.hlsSaverAttached) return;
+    NS.downloadButton = b;
+    b.dataset.hlsSaverAttached = '1';
+    b.addEventListener('click', async e => {
+        e.preventDefault();
+        e.stopPropagation();
+        e.stopImmediatePropagation();
+        if(NS.busy){
+            // Clicking the button again while a download is running cancels it,
+            // instead of silently ignoring the click.
+            NS.cancelDownload();
+            updateButton('Cancelling...');
+            return;
+        }
+
+        const selected = NS.getMasterPlaylist() || NS.getMediaPlaylist();
+        if(!selected){
+            updateButton('Download');
+            alert('No HLS playlist detected.\n\nPlay the video for a few seconds, then click Download again.');
+            return;
+        }
+
+        setBusy(true);
+        updateButton('Preparing...');
+        try{
+            await NS.runDownload(selected.url, selected.text, updateButton);
+            updateButton('Download');
+        }catch(err){
+            console.error('[HLS Saver]', err);
+            if(err?.message !== 'Cancelled'){
+                alert('HLS download failed:\n\n' + (err?.message || err));
+            }
+            updateButton('Download');
+        }
+        setBusy(false);
+    }, true);
+}
+
+NS.watchForButton = function(){
+    const find = () => {
+        if(NS.downloadButton && document.contains(NS.downloadButton)) return;
+        const b = findButton();
+        if(b) attachButton(b);
+    };
+    find();
+    new MutationObserver(find).observe(document.documentElement, {childList: true, subtree: true});
+};
+})();

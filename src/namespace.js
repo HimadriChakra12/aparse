@@ -1,0 +1,23 @@
+// Resolve the REAL page window. Under Tampermonkey on Firefox, `window`
+// inside a userscript can be an Xray-wrapped view that is NOT the same
+// object identity the page's own scripts (hls.min.js) see — patching
+// XMLHttpRequest.prototype through that wrapper silently does nothing to
+// the page's actual requests. unsafeWindow is Tampermonkey's explicit
+// escape hatch to the real page window; @grant unsafeWindow is required
+// for it to exist. Falls back to window for other userscript managers
+// that don't need the escape hatch (Violentmonkey often doesn't).
+const PAGE_WINDOW = (typeof unsafeWindow !== 'undefined') ? unsafeWindow : window;
+
+// Shared namespace for the HLS Saver userscript.
+// Every module attaches to window.__hlsSaver instead of using globals directly,
+// so build.js can concatenate files in dependency order without import/export.
+// __HLS_SAVER_VERSION__ is substituted by tools/build.js from package.json,
+// so this never drifts from the @version in the userscript header again.
+window.__hlsSaver = window.__hlsSaver || {
+    version: '__HLS_SAVER_VERSION__',
+    pageWindow: PAGE_WINDOW,
+    playlists: new Map(),   // url -> m3u8 text
+    downloadButton: null,
+    busy: false,
+    log(...a){ console.log('[HLS Saver]', ...a); },
+};

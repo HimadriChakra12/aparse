@@ -24,6 +24,7 @@ static const char *ORDER[] = {
     "src/core/network-hooks.js",
     "src/core/hls-instance.js",
     "src/core/playlist-resolver.js",
+    "src/core/hls-crypto.js",
     "src/core/segments.js",
     "src/core/remux.js",
     "src/core/downloader.js",

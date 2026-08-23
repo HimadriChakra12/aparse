@@ -21,3 +21,13 @@ window.__hlsSaver = window.__hlsSaver || {
     busy: false,
     log(...a){ console.log('[HLS Saver]', ...a); },
 };
+
+// Also expose the SAME object on the real page window. Internally every
+// module still reads `window.__hlsSaver` (the userscript's own scope,
+// self-consistent across all our files) -- this mirror exists purely so
+// the actual browser devtools console, which evaluates in true page
+// context, can inspect __hlsSaver for debugging. Without this, internal
+// logging can show captured playlists while `window.__hlsSaver` typed
+// into the console still reads as undefined, which is confusing but not
+// a sign anything is actually broken.
+try{ PAGE_WINDOW.__hlsSaver = window.__hlsSaver; }catch(e){ /* ignore */ }

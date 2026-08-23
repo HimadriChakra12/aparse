@@ -77,13 +77,34 @@ async function fetchSegmentWithRetry(descriptor, index, total, signal, onProgres
 
 // signal: an AbortSignal (from NS.currentDownloadController) so a running
 // download can be cancelled mid-loop instead of running to completion.
+//
+// Segments are fetched with bounded concurrency instead of one at a time --
+// sequential fetching was the real download-speed bottleneck (each segment
+// pays a full round-trip before the next one even starts). CONCURRENCY
+// workers pull from a shared index cursor and write results into `chunks`
+// by index, so output order is preserved regardless of completion order.
+const CONCURRENCY = 6;
+
 NS.fetchAllSegments = async function(files, onProgress, signal){
-    const chunks = [];
-    for(let i = 0; i < files.length; i++){
-        if(signal?.aborted) throw Error('Cancelled');
-        chunks.push(await fetchSegmentWithRetry(files[i], i, files.length, signal, onProgress));
-        if(onProgress) onProgress(i + 1, files.length);
+    const chunks = new Array(files.length);
+    let nextIndex = 0;
+    let completed = 0;
+
+    async function worker(){
+        while(true){
+            if(signal?.aborted) throw Error('Cancelled');
+            const i = nextIndex++;
+            if(i >= files.length) return;
+            chunks[i] = await fetchSegmentWithRetry(files[i], i, files.length, signal, onProgress);
+            completed++;
+            if(onProgress) onProgress(completed, files.length);
+        }
     }
+
+    const workerCount = Math.min(CONCURRENCY, files.length);
+    const workers = Array.from({length: workerCount}, () => worker());
+    await Promise.all(workers);
+
     return chunks;
 };
 })();

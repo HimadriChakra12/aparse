@@ -10,8 +10,8 @@ const PAGE_WINDOW = (typeof unsafeWindow !== 'undefined') ? unsafeWindow : windo
 
 // Shared namespace for the HLS Saver userscript.
 // Every module attaches to window.__hlsSaver instead of using globals directly,
-// so build.js can concatenate files in dependency order without import/export.
-// __HLS_SAVER_VERSION__ is substituted by tools/build.js from package.json,
+// so tools/build.c can concatenate files in dependency order without import/export.
+// __HLS_SAVER_VERSION__ is substituted by tools/build.c from tools/VERSION,
 // so this never drifts from the @version in the userscript header again.
 window.__hlsSaver = window.__hlsSaver || {
     version: '__HLS_SAVER_VERSION__',
@@ -31,3 +31,4 @@ window.__hlsSaver = window.__hlsSaver || {
 // into the console still reads as undefined, which is confusing but not
 // a sign anything is actually broken.
 try{ PAGE_WINDOW.__hlsSaver = window.__hlsSaver; }catch(e){ /* ignore */ }
+

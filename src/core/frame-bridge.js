@@ -6,7 +6,7 @@ const NS = window.__hlsSaver;
 // aparsclassroom.com never sees hls.js's requests there — this is almost
 // certainly why capture came back completely empty despite the Network tab
 // showing successful requests. We now inject into BOTH the top page and the
-// iframe (see @match in tools/build.js); each frame captures independently,
+// iframe (see @match in tools/build.c); each frame captures independently,
 // and the iframe forwards anything it captures up to the top frame, since
 // cross-origin frames can't share JS objects directly.
 NS.isTopFrame = (window.top === window);

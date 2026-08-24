@@ -7,27 +7,26 @@ while you're logged in and the video is playing — same idea as any
 ## Structure
 
 ```
-dist/            built output: hls-saver.user.js (install this in Tampermonkey)
-src/
-  namespace.js   shared state (window.__hlsSaver)
-  core/
-    core/util.js              URL/playlist parsing helpers
-    frame-bridge.js       Chunk 5: bridges playlist captures from the player's iframe to the top frame
-    network-hooks.js      Chunk: passive XHR/fetch response capture (no re-fetch, no CORS)
-    hls-instance.js        Chunk 1: hooks the page's Hls.js constructor, forces 720p level
-    playlist-resolver.js   ties network-hooks + hls-instance together to get the 720p playlist
-    segments.js             Chunk 2: parses media playlist, fetches segments (extension-agnostic)
-    remux.js                 Chunk 3: real MP4 remux via ffmpeg.wasm, raw-concat fallback
-    downloader.js             orchestrates resolve -> fetch -> remux -> download
-    entry.js                   installs hooks, starts UI watcher
-  ui/
-    button.js       finds/attaches the in-page Download button
-tools/
-  build.c        C build tool (no Node dependency) — concatenates src/ in
-                 dependency order into dist/hls-saver.user.js, substitutes
-                 __HLS_SAVER_VERSION__ from tools/VERSION
-  VERSION        plain-text version string, single line
-Makefile
+-
+| dist/            built output: aparse.user.js (install this in Tampermonkey)
+| src/
+| | namespace.js   shared state (window.__hlsSaver)
+| | core/
+| | | core/util.js              URL/playlist parsing helpers
+| | | frame-bridge.js           bridges playlist captures from the player's iframe to the top frame
+| | | network-hooks.js          passive XHR/fetch response capture (no re-fetch, no CORS)
+| | | hls-instance.js           hooks the page's Hls.js constructor, forces 720p level
+| | | playlist-resolver.js      ties network-hooks + hls-instance together to get the 720p playlist
+| | | segments.js               parses media playlist, fetches segments (extension-agnostic)
+| | | remux.js                  real MP4 remux via ffmpeg.wasm, raw-concat fallback
+| | | downloader.js             orchestrates resolve -> fetch -> remux -> download
+| | | entry.js                  installs hooks, starts UI watcher
+| | ui/
+| | | button.js                 finds/attaches the in-page Download button
+| tools/
+| | build.c                     C build tool(mujs) to compile the aparse.user.js
+| | VERSION                     plain-text version string, single line
+| Makefile
 ```
 
 ## Build
@@ -37,8 +36,8 @@ make build
 ```
 
 Compiles `tools/build.c` to `tools/build` (only recompiles if build.c
-changed), then runs it. Outputs `dist/hls-saver.user.js`. No Node/JS runtime
-needed — install `dist/hls-saver.user.js` in Tampermonkey/Violentmonkey.
+changed), then runs it. Outputs `dist/aparse.user.js`. No Node/JS runtime
+needed — install `dist/aparse.user.js` in Tampermonkey/Violentmonkey.
 
 To bump the version, edit `tools/VERSION` and rebuild.
 

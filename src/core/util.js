@@ -1,9 +1,6 @@
 (function(){
 const NS = window.__hlsSaver;
 
-// Matches .m3u8 URLs. HLS segment URLs may be named .ts, .dts, or anything
-// else the site chooses to obfuscate with — extension is never trusted
-// for segments, only for playlists.
 NS.isHLS = function(u){
     return typeof u === 'string' && /\.m3u8(?:[?#]|$)/i.test(u);
 };
@@ -32,8 +29,6 @@ NS.find720pVariant = function(masterURL, text){
     return null;
 };
 
-// Returns the index of the 720p entry within an hls.js `levels` array,
-// used by hls-instance.js to force `hls.loadLevel`/`hls.currentLevel`.
 NS.find720pLevelIndex = function(levels){
     if(!Array.isArray(levels)) return -1;
     let idx = levels.findIndex(l => l && l.height === 720);

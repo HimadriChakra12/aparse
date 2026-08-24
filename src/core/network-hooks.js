@@ -1,11 +1,6 @@
 (function(){
 const NS = window.__hlsSaver;
 
-// We capture playlist text straight from the SAME request HLS.js already
-// made and that already succeeded, instead of issuing a second cross-origin
-// fetch. That avoids the credentials/CORS mismatch that broke v6
-// (CDN sends Access-Control-Allow-Origin: * with no credentials header;
-// `credentials:'include'` on a cross-origin request rejects that response).
 function extractText(xhr){
     const type = xhr.responseType;
     if(type === '' || type === 'text'){
@@ -15,7 +10,6 @@ function extractText(xhr){
         try{ return new TextDecoder('utf-8').decode(xhr.response); }catch{ return null; }
     }
     if(type === 'blob' && xhr.response){
-        // Blob requires an async read; handled by caller via a promise path.
         return xhr.response.text();
     }
     return null;
@@ -68,14 +62,6 @@ function hookFetch(){
     };
 }
 
-// Independent fallback: scans PerformanceResourceTiming entries for m3u8
-// URLs and direct-fetches anything not already captured. Catches cases
-// where our XHR/fetch monkeypatch installed after hls.js already grabbed
-// its own reference to the originals (can happen even at document-start
-// depending on extension sandboxing/injection order). credentials:'omit'
-// because this CDN's CORS response has no Access-Control-Allow-Credentials,
-// so a credentialed cross-origin request is rejected even though the
-// underlying network call succeeds.
 const seenResourceURLs = new Set();
 function scanResourceTimingFallback(){
     try{

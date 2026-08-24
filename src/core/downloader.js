@@ -12,8 +12,6 @@ function triggerDownload(blob, filename){
     setTimeout(() => URL.revokeObjectURL(u), 30000);
 }
 
-// Tracks the in-flight download so the UI can offer a Cancel action.
-// Only one download runs at a time (enforced by the button's busy flag).
 NS.currentDownloadController = null;
 
 NS.cancelDownload = function(){
@@ -45,10 +43,6 @@ NS.runDownload = async function(masterOrMediaUrl, masterOrMediaText, updateStatu
             NS.log('ffmpeg.wasm remux failed, falling back to raw concat:', e);
             updateStatus('Remux failed, using raw concat...');
             blob = NS.rawConcatBlob(chunks);
-            // Raw concat is unmuxed MPEG-TS, not a real MP4 container --
-            // labeling it .mp4 anyway can make players' format probing
-            // misbehave (extension bias picks the wrong demuxer). .ts
-            // plays natively and correctly in mpv/vlc/ffmpeg as-is.
             extension = 'ts';
         }
 

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Apars Classroom HLS Saver
 // @namespace    apars-aparse
-// @version      7.7.0
+// @version      7.11.2
 // @description  Download 720p HLS stream (forced level select + ffmpeg.wasm remux)
 // @match        https://*.aparsclassroom.com/*
 // @match        https://iframe.mediadelivery.net/*
@@ -11,23 +11,10 @@
 // ==/UserScript==
 
 // ---- namespace.js ----
-// Resolve the REAL page window. Under Tampermonkey on Firefox, `window`
-// inside a userscript can be an Xray-wrapped view that is NOT the same
-// object identity the page's own scripts (hls.min.js) see — patching
-// XMLHttpRequest.prototype through that wrapper silently does nothing to
-// the page's actual requests. unsafeWindow is Tampermonkey's explicit
-// escape hatch to the real page window; @grant unsafeWindow is required
-// for it to exist. Falls back to window for other userscript managers
-// that don't need the escape hatch (Violentmonkey often doesn't).
 const PAGE_WINDOW = (typeof unsafeWindow !== 'undefined') ? unsafeWindow : window;
 
-// Shared namespace for the HLS Saver userscript.
-// Every module attaches to window.__hlsSaver instead of using globals directly,
-// so build.js can concatenate files in dependency order without import/export.
-// 7.7.0 is substituted by tools/build.js from package.json,
-// so this never drifts from the @version in the userscript header again.
 window.__hlsSaver = window.__hlsSaver || {
-    version: '7.7.0',
+    version: '7.11.1',
     pageWindow: PAGE_WINDOW,
     playlists: new Map(),   // url -> m3u8 text
     downloadButton: null,
@@ -35,23 +22,12 @@ window.__hlsSaver = window.__hlsSaver || {
     log(...a){ console.log('[HLS Saver]', ...a); },
 };
 
-// Also expose the SAME object on the real page window. Internally every
-// module still reads `window.__hlsSaver` (the userscript's own scope,
-// self-consistent across all our files) -- this mirror exists purely so
-// the actual browser devtools console, which evaluates in true page
-// context, can inspect __hlsSaver for debugging. Without this, internal
-// logging can show captured playlists while `window.__hlsSaver` typed
-// into the console still reads as undefined, which is confusing but not
-// a sign anything is actually broken.
 try{ PAGE_WINDOW.__hlsSaver = window.__hlsSaver; }catch(e){ /* ignore */ }
 
 // ---- core/util.js ----
 (function(){
 const NS = window.__hlsSaver;
 
-// Matches .m3u8 URLs. HLS segment URLs may be named .ts, .dts, or anything
-// else the site chooses to obfuscate with — extension is never trusted
-// for segments, only for playlists.
 NS.isHLS = function(u){
     return typeof u === 'string' && /\.m3u8(?:[?#]|$)/i.test(u);
 };
@@ -80,8 +56,6 @@ NS.find720pVariant = function(masterURL, text){
     return null;
 };
 
-// Returns the index of the 720p entry within an hls.js `levels` array,
-// used by hls-instance.js to force `hls.loadLevel`/`hls.currentLevel`.
 NS.find720pLevelIndex = function(levels){
     if(!Array.isArray(levels)) return -1;
     let idx = levels.findIndex(l => l && l.height === 720);
@@ -109,14 +83,6 @@ NS.getMediaPlaylist = function(){
 (function(){
 const NS = window.__hlsSaver;
 
-// The player renders inside a cross-origin <iframe> (iframe.mediadelivery.net),
-// which has its own separate window/document. A userscript matched only to
-// aparsclassroom.com never sees hls.js's requests there — this is almost
-// certainly why capture came back completely empty despite the Network tab
-// showing successful requests. We now inject into BOTH the top page and the
-// iframe (see @match in tools/build.js); each frame captures independently,
-// and the iframe forwards anything it captures up to the top frame, since
-// cross-origin frames can't share JS objects directly.
 NS.isTopFrame = (window.top === window);
 
 if(!NS.isTopFrame){
@@ -142,11 +108,6 @@ if(!NS.isTopFrame){
 (function(){
 const NS = window.__hlsSaver;
 
-// We capture playlist text straight from the SAME request HLS.js already
-// made and that already succeeded, instead of issuing a second cross-origin
-// fetch. That avoids the credentials/CORS mismatch that broke v6
-// (CDN sends Access-Control-Allow-Origin: * with no credentials header;
-// `credentials:'include'` on a cross-origin request rejects that response).
 function extractText(xhr){
     const type = xhr.responseType;
     if(type === '' || type === 'text'){
@@ -156,7 +117,6 @@ function extractText(xhr){
         try{ return new TextDecoder('utf-8').decode(xhr.response); }catch{ return null; }
     }
     if(type === 'blob' && xhr.response){
-        // Blob requires an async read; handled by caller via a promise path.
         return xhr.response.text();
     }
     return null;
@@ -209,14 +169,6 @@ function hookFetch(){
     };
 }
 
-// Independent fallback: scans PerformanceResourceTiming entries for m3u8
-// URLs and direct-fetches anything not already captured. Catches cases
-// where our XHR/fetch monkeypatch installed after hls.js already grabbed
-// its own reference to the originals (can happen even at document-start
-// depending on extension sandboxing/injection order). credentials:'omit'
-// because this CDN's CORS response has no Access-Control-Allow-Credentials,
-// so a credentialed cross-origin request is rejected even though the
-// underlying network call succeeds.
 const seenResourceURLs = new Set();
 function scanResourceTimingFallback(){
     try{
@@ -249,10 +201,6 @@ NS.installNetworkHooks = function(){
 (function(){
 const NS = window.__hlsSaver;
 
-// Confirmed via Network tab Initiator column: requests are "hls.min.js:1
-// (xhr)" — this IS hls.js. (Earlier guess that the console's quality-match
-// object meant Shaka was wrong: hls.js's own Level class also carries
-// _urlId, fragmentError, supportedPromise, etc. in newer versions.)
 NS.hlsInstances = new Set();
 
 NS.installHlsConstructorHook = function(){
@@ -282,8 +230,6 @@ NS.installHlsConstructorHook = function(){
     setTimeout(() => clearInterval(iv), 20000);
 };
 
-// Fallback scan in case the constructor hook installed after hls.js already
-// created its instance (same timing risk as the network hooks).
 function scanWindowForHlsInstance(){
     try{
         for(const key of Object.getOwnPropertyNames(NS.pageWindow)){
@@ -297,8 +243,6 @@ function scanWindowForHlsInstance(){
     }catch{}
 }
 
-// Forces the player onto the 720p rendition via hls.js's public API.
-// Returns true if a level switch was actually issued.
 NS.force720p = function(){
     if(NS.hlsInstances.size === 0) scanWindowForHlsInstance();
     for(const hls of NS.hlsInstances){
@@ -314,11 +258,6 @@ NS.force720p = function(){
     return false;
 };
 
-// Backup strategy needing no player internals at all: this CDN's variant
-// URLs follow a fixed pattern confirmed directly from your Network tab —
-//   https://vz-2d726a87-cba.b-cdn.net/<id>/720p/video.m3u8
-// Given any playlist URL already captured (master or another resolution),
-// derive the 720p URL by substitution.
 NS.deriveVariantUrlFromPattern = function(knownUrl, height){
     try{
         const m = knownUrl.match(/^(.*\/)(\d+)p\/video\.m3u8/);
@@ -350,20 +289,6 @@ function waitForPlaylist(url, timeoutMs = 8000){
     });
 }
 
-// Given a master/known playlist, resolves {url, text} for the 720p variant.
-// Order of attack, cheapest/most-reliable first:
-//   1. Already captured passively — use it immediately.
-//   2. Derive the URL directly from the known CDN pattern
-//      ({base}/{id}/{height}p/video.m3u8, confirmed from console output)
-//      and fetch it directly. credentials:'omit' is used because this CDN's
-//      CORS response (Access-Control-Allow-Origin: *) does NOT include
-//      Access-Control-Allow-Credentials, so a credentialed cross-origin
-//      request gets silently rejected by the browser even though the
-//      network call itself returns 200 — this was the root cause of the
-//      original "No HLS playlist detected" bug.
-//   3. Force Shaka Player to switch tracks (this site uses shaka.Player,
-//      not hls.js) so the player's own request gets captured passively.
-//   4. Fall back to passively waiting in case no player instance was found.
 NS.resolve720pPlaylist = async function(masterUrl, masterText){
     if(!masterText.includes('#EXT-X-STREAM-INF')) return {url: masterUrl, text: masterText};
 
@@ -372,7 +297,6 @@ NS.resolve720pPlaylist = async function(masterUrl, masterText){
 
     if(NS.playlists.has(variant)) return {url: variant, text: NS.playlists.get(variant)};
 
-    // Strategy 2: direct fetch via known URL pattern.
     const derived = NS.deriveVariantUrlFromPattern(masterUrl, 720) || variant;
     try{
         const r = await NS.pageWindow.fetch(derived, {cache: 'no-store', credentials: 'omit'});
@@ -388,7 +312,6 @@ NS.resolve720pPlaylist = async function(masterUrl, masterText){
         NS.log('Direct fetch of derived 720p URL failed, falling back:', e);
     }
 
-    // Strategy 3/4: force hls.js, or passively wait for it to request it.
     const forced = NS.force720p();
     NS.log(forced ? 'Requested 720p level switch via hls.js' : 'No hls.js instance found, falling back to passive wait');
 
@@ -403,10 +326,6 @@ NS.resolve720pPlaylist = async function(masterUrl, masterText){
 (function(){
 const NS = window.__hlsSaver;
 
-// HLS AES-128 encryption: segments are AES-CBC encrypted, keyed by a
-// #EXT-X-KEY:METHOD=AES-128,URI="...",IV=0x... line in the media playlist.
-// If IV is omitted, the spec says to use the segment's media sequence
-// number as a 16-byte big-endian integer instead.
 const keyCache = new Map(); // key URI -> Promise<CryptoKey>
 
 function ivFromSequence(seq){
@@ -420,9 +339,6 @@ function ivFromSequence(seq){
 }
 
 function getSubtle(){
-    // Use the page's own crypto.subtle for consistency with the rest of
-    // the pageWindow-routing fix -- avoids any repeat of the Xray-isolation
-    // issue that broke XHR/fetch capture earlier.
     return (NS.pageWindow.crypto || crypto).subtle;
 }
 
@@ -438,8 +354,6 @@ function getKey(keyUri){
     return keyCache.get(keyUri);
 }
 
-// Parses a #EXT-X-KEY: line into {method, uri, ivBytes|null}, or null for
-// METHOD=NONE (explicitly unencrypted) / a line we don't understand.
 NS.parseKeyLine = function(line, playlistUrl){
     const methodMatch = line.match(/METHOD=([^,]+)/i);
     const method = methodMatch ? methodMatch[1].trim() : 'NONE';
@@ -460,8 +374,6 @@ NS.parseKeyLine = function(line, playlistUrl){
     return {method, uri, ivBytes};
 };
 
-// Decrypts a segment's ArrayBuffer if keyInfo indicates AES-128; returns
-// the buffer unchanged (or throws for an unsupported method) otherwise.
 NS.decryptSegmentIfNeeded = async function(buffer, keyInfo, seq){
     if(!keyInfo) return buffer;
     if(keyInfo.method !== 'AES-128'){
@@ -478,12 +390,6 @@ NS.decryptSegmentIfNeeded = async function(buffer, keyInfo, seq){
 (function(){
 const NS = window.__hlsSaver;
 
-// Segment URLs are fetched exactly as given -- the `.dts` naming this site
-// uses is just an obfuscated extension, it has no bearing on how we fetch
-// or read the bytes. Each entry is a descriptor {url, key, seq} rather than
-// a bare URL, so encryption context (see hls-crypto.js) travels with it:
-// AES-128 key info comes from #EXT-X-KEY, and the IV falls back to the
-// segment's own media sequence number when not given explicitly.
 NS.parseMediaPlaylist = function(url, text){
     const lines = text.split(/\r?\n/).map(x => x.trim());
     const files = [];
@@ -515,12 +421,6 @@ NS.parseMediaPlaylist = function(url, text){
     return files;
 };
 
-// Segments were never passively captured (only playlists are, via the
-// network hooks), so this is the one place we still issue our own fetch.
-// credentials:'omit' matches what worked for playlists once cross-origin
-// credentialed requests were removed -- same CDN, same-origin rules apply.
-// Decryption (if the segment carries key info) happens right after fetch,
-// before the bytes go anywhere else.
 NS.fetchSegment = async function(descriptor, signal){
     const r = await NS.pageWindow.fetch(descriptor.url, {cache: 'no-store', credentials: 'omit', signal});
     if(!r.ok) throw Error(`Segment failed: ${r.status} ${descriptor.url}`);
@@ -552,15 +452,28 @@ async function fetchSegmentWithRetry(descriptor, index, total, signal, onProgres
     throw Error(`Segment ${index + 1}/${total} failed after ${MAX_RETRIES} attempts: ${lastErr?.message || lastErr}`);
 }
 
-// signal: an AbortSignal (from NS.currentDownloadController) so a running
-// download can be cancelled mid-loop instead of running to completion.
+const CONCURRENCY = 6;
+
 NS.fetchAllSegments = async function(files, onProgress, signal){
-    const chunks = [];
-    for(let i = 0; i < files.length; i++){
-        if(signal?.aborted) throw Error('Cancelled');
-        chunks.push(await fetchSegmentWithRetry(files[i], i, files.length, signal, onProgress));
-        if(onProgress) onProgress(i + 1, files.length);
+    const chunks = new Array(files.length);
+    let nextIndex = 0;
+    let completed = 0;
+
+    async function worker(){
+        while(true){
+            if(signal?.aborted) throw Error('Cancelled');
+            const i = nextIndex++;
+            if(i >= files.length) return;
+            chunks[i] = await fetchSegmentWithRetry(files[i], i, files.length, signal, onProgress);
+            completed++;
+            if(onProgress) onProgress(completed, files.length);
+        }
     }
+
+    const workerCount = Math.min(CONCURRENCY, files.length);
+    const workers = Array.from({length: workerCount}, () => worker());
+    await Promise.all(workers);
+
     return chunks;
 };
 })();
@@ -598,10 +511,6 @@ async function getFFmpeg(){
     return ffmpegLoadPromise;
 }
 
-// Proper remux: writes each segment into ffmpeg.wasm's virtual FS, builds a
-// concat list, and copies streams into a real MP4 container (no re-encode,
-// `-c copy`) — fixes seek bar/duration metadata that raw Blob concat leaves
-// broken.
 NS.remuxToMp4 = async function(chunks, onProgress, signal){
     if(onProgress) onProgress('Loading ffmpeg.wasm...');
     const ffmpeg = await getFFmpeg();
@@ -626,11 +535,8 @@ NS.remuxToMp4 = async function(chunks, onProgress, signal){
     return new Blob([data.buffer], {type: 'video/mp4'});
 };
 
-// Fallback used if ffmpeg.wasm fails to load — same behavior as before,
-// a raw concatenated Blob. Playable in most players but with broken
-// seeking/duration since it isn't a real MP4 container.
 NS.rawConcatBlob = function(chunks){
-    return new Blob(chunks, {type: 'video/mp4'});
+    return new Blob(chunks, {type: 'video/mp2t'});
 };
 })();
 
@@ -649,8 +555,6 @@ function triggerDownload(blob, filename){
     setTimeout(() => URL.revokeObjectURL(u), 30000);
 }
 
-// Tracks the in-flight download so the UI can offer a Cancel action.
-// Only one download runs at a time (enforced by the button's busy flag).
 NS.currentDownloadController = null;
 
 NS.cancelDownload = function(){
@@ -675,16 +579,19 @@ NS.runDownload = async function(masterOrMediaUrl, masterOrMediaText, updateStatu
         }, controller.signal);
 
         let blob;
+        let extension = 'mp4';
         try{
             blob = await NS.remuxToMp4(chunks, msg => updateStatus(msg), controller.signal);
         }catch(e){
             NS.log('ffmpeg.wasm remux failed, falling back to raw concat:', e);
             updateStatus('Remux failed, using raw concat...');
             blob = NS.rawConcatBlob(chunks);
+            extension = 'ts';
         }
 
         updateStatus('Preparing...');
-        triggerDownload(blob, 'video_720p.mp4');
+        const baseName = (NS.getVideoTitle ? NS.getVideoTitle() : null) || 'video_720p';
+        triggerDownload(blob, `${baseName}.${extension}`);
     }finally{
         NS.currentDownloadController = null;
     }
@@ -694,6 +601,28 @@ NS.runDownload = async function(masterOrMediaUrl, masterOrMediaText, updateStatu
 // ---- ui/button.js ----
 (function(){
 const NS = window.__hlsSaver;
+
+function sanitizeFilename(title){
+    title = (title || '').split('|')[0].split(' — ')[0].trim();
+    title = title.replace(/[\\/:*?"<>|]+/g, '').replace(/\s+/g, ' ').trim();
+    return title;
+}
+
+function extractHeadingTitle(){
+    const el = document.querySelector('div.rounded-2xl h1.font-extrabold')
+            || document.querySelector('h1.font-extrabold');
+    return el ? el.textContent : null;
+}
+
+NS.getVideoTitle = function(){
+    const heading = sanitizeFilename(extractHeadingTitle());
+    if(heading) return heading;
+
+    const fromTitle = sanitizeFilename(document.title);
+    if(fromTitle) return fromTitle;
+
+    return 'video_720p';
+};
 
 function findButton(){
     const icon = document.querySelector('svg.lucide-download');
@@ -731,8 +660,6 @@ function attachButton(b){
         e.stopPropagation();
         e.stopImmediatePropagation();
         if(NS.busy){
-            // Clicking the button again while a download is running cancels it,
-            // instead of silently ignoring the click.
             NS.cancelDownload();
             updateButton('Cancelling...');
             return;

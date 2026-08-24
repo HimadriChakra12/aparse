@@ -30,10 +30,6 @@ async function getFFmpeg(){
     return ffmpegLoadPromise;
 }
 
-// Proper remux: writes each segment into ffmpeg.wasm's virtual FS, builds a
-// concat list, and copies streams into a real MP4 container (no re-encode,
-// `-c copy`) — fixes seek bar/duration metadata that raw Blob concat leaves
-// broken.
 NS.remuxToMp4 = async function(chunks, onProgress, signal){
     if(onProgress) onProgress('Loading ffmpeg.wasm...');
     const ffmpeg = await getFFmpeg();
@@ -58,10 +54,6 @@ NS.remuxToMp4 = async function(chunks, onProgress, signal){
     return new Blob([data.buffer], {type: 'video/mp4'});
 };
 
-// Fallback used if ffmpeg.wasm fails to load — same behavior as before,
-// a raw concatenated Blob of MPEG-TS data. downloader.js pairs this with
-// a .ts filename (not .mp4) so players' format probing isn't misled by a
-// container claim the bytes don't actually match.
 NS.rawConcatBlob = function(chunks){
     return new Blob(chunks, {type: 'video/mp2t'});
 };

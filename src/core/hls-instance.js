@@ -1,10 +1,6 @@
 (function(){
 const NS = window.__hlsSaver;
 
-// Confirmed via Network tab Initiator column: requests are "hls.min.js:1
-// (xhr)" — this IS hls.js. (Earlier guess that the console's quality-match
-// object meant Shaka was wrong: hls.js's own Level class also carries
-// _urlId, fragmentError, supportedPromise, etc. in newer versions.)
 NS.hlsInstances = new Set();
 
 NS.installHlsConstructorHook = function(){
@@ -34,8 +30,6 @@ NS.installHlsConstructorHook = function(){
     setTimeout(() => clearInterval(iv), 20000);
 };
 
-// Fallback scan in case the constructor hook installed after hls.js already
-// created its instance (same timing risk as the network hooks).
 function scanWindowForHlsInstance(){
     try{
         for(const key of Object.getOwnPropertyNames(NS.pageWindow)){
@@ -49,8 +43,6 @@ function scanWindowForHlsInstance(){
     }catch{}
 }
 
-// Forces the player onto the 720p rendition via hls.js's public API.
-// Returns true if a level switch was actually issued.
 NS.force720p = function(){
     if(NS.hlsInstances.size === 0) scanWindowForHlsInstance();
     for(const hls of NS.hlsInstances){
@@ -66,11 +58,6 @@ NS.force720p = function(){
     return false;
 };
 
-// Backup strategy needing no player internals at all: this CDN's variant
-// URLs follow a fixed pattern confirmed directly from your Network tab —
-//   https://vz-2d726a87-cba.b-cdn.net/<id>/720p/video.m3u8
-// Given any playlist URL already captured (master or another resolution),
-// derive the 720p URL by substitution.
 NS.deriveVariantUrlFromPattern = function(knownUrl, height){
     try{
         const m = knownUrl.match(/^(.*\/)(\d+)p\/video\.m3u8/);

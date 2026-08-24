@@ -1,12 +1,6 @@
 (function(){
 const NS = window.__hlsSaver;
 
-// Segment URLs are fetched exactly as given -- the `.dts` naming this site
-// uses is just an obfuscated extension, it has no bearing on how we fetch
-// or read the bytes. Each entry is a descriptor {url, key, seq} rather than
-// a bare URL, so encryption context (see hls-crypto.js) travels with it:
-// AES-128 key info comes from #EXT-X-KEY, and the IV falls back to the
-// segment's own media sequence number when not given explicitly.
 NS.parseMediaPlaylist = function(url, text){
     const lines = text.split(/\r?\n/).map(x => x.trim());
     const files = [];
@@ -38,12 +32,6 @@ NS.parseMediaPlaylist = function(url, text){
     return files;
 };
 
-// Segments were never passively captured (only playlists are, via the
-// network hooks), so this is the one place we still issue our own fetch.
-// credentials:'omit' matches what worked for playlists once cross-origin
-// credentialed requests were removed -- same CDN, same-origin rules apply.
-// Decryption (if the segment carries key info) happens right after fetch,
-// before the bytes go anywhere else.
 NS.fetchSegment = async function(descriptor, signal){
     const r = await NS.pageWindow.fetch(descriptor.url, {cache: 'no-store', credentials: 'omit', signal});
     if(!r.ok) throw Error(`Segment failed: ${r.status} ${descriptor.url}`);
@@ -75,14 +63,6 @@ async function fetchSegmentWithRetry(descriptor, index, total, signal, onProgres
     throw Error(`Segment ${index + 1}/${total} failed after ${MAX_RETRIES} attempts: ${lastErr?.message || lastErr}`);
 }
 
-// signal: an AbortSignal (from NS.currentDownloadController) so a running
-// download can be cancelled mid-loop instead of running to completion.
-//
-// Segments are fetched with bounded concurrency instead of one at a time --
-// sequential fetching was the real download-speed bottleneck (each segment
-// pays a full round-trip before the next one even starts). CONCURRENCY
-// workers pull from a shared index cursor and write results into `chunks`
-// by index, so output order is preserved regardless of completion order.
 const CONCURRENCY = 6;
 
 NS.fetchAllSegments = async function(files, onProgress, signal){

@@ -1,10 +1,6 @@
 (function(){
 const NS = window.__hlsSaver;
 
-// HLS AES-128 encryption: segments are AES-CBC encrypted, keyed by a
-// #EXT-X-KEY:METHOD=AES-128,URI="...",IV=0x... line in the media playlist.
-// If IV is omitted, the spec says to use the segment's media sequence
-// number as a 16-byte big-endian integer instead.
 const keyCache = new Map(); // key URI -> Promise<CryptoKey>
 
 function ivFromSequence(seq){
@@ -18,9 +14,6 @@ function ivFromSequence(seq){
 }
 
 function getSubtle(){
-    // Use the page's own crypto.subtle for consistency with the rest of
-    // the pageWindow-routing fix -- avoids any repeat of the Xray-isolation
-    // issue that broke XHR/fetch capture earlier.
     return (NS.pageWindow.crypto || crypto).subtle;
 }
 
@@ -36,8 +29,6 @@ function getKey(keyUri){
     return keyCache.get(keyUri);
 }
 
-// Parses a #EXT-X-KEY: line into {method, uri, ivBytes|null}, or null for
-// METHOD=NONE (explicitly unencrypted) / a line we don't understand.
 NS.parseKeyLine = function(line, playlistUrl){
     const methodMatch = line.match(/METHOD=([^,]+)/i);
     const method = methodMatch ? methodMatch[1].trim() : 'NONE';
@@ -58,8 +49,6 @@ NS.parseKeyLine = function(line, playlistUrl){
     return {method, uri, ivBytes};
 };
 
-// Decrypts a segment's ArrayBuffer if keyInfo indicates AES-128; returns
-// the buffer unchanged (or throws for an unsupported method) otherwise.
 NS.decryptSegmentIfNeeded = async function(buffer, keyInfo, seq){
     if(!keyInfo) return buffer;
     if(keyInfo.method !== 'AES-128'){

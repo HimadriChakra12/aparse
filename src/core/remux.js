@@ -59,9 +59,10 @@ NS.remuxToMp4 = async function(chunks, onProgress, signal){
 };
 
 // Fallback used if ffmpeg.wasm fails to load — same behavior as before,
-// a raw concatenated Blob. Playable in most players but with broken
-// seeking/duration since it isn't a real MP4 container.
+// a raw concatenated Blob of MPEG-TS data. downloader.js pairs this with
+// a .ts filename (not .mp4) so players' format probing isn't misled by a
+// container claim the bytes don't actually match.
 NS.rawConcatBlob = function(chunks){
-    return new Blob(chunks, {type: 'video/mp4'});
+    return new Blob(chunks, {type: 'video/mp2t'});
 };
 })();

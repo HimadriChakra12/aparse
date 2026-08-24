@@ -38,16 +38,23 @@ NS.runDownload = async function(masterOrMediaUrl, masterOrMediaText, updateStatu
         }, controller.signal);
 
         let blob;
+        let extension = 'mp4';
         try{
             blob = await NS.remuxToMp4(chunks, msg => updateStatus(msg), controller.signal);
         }catch(e){
             NS.log('ffmpeg.wasm remux failed, falling back to raw concat:', e);
             updateStatus('Remux failed, using raw concat...');
             blob = NS.rawConcatBlob(chunks);
+            // Raw concat is unmuxed MPEG-TS, not a real MP4 container --
+            // labeling it .mp4 anyway can make players' format probing
+            // misbehave (extension bias picks the wrong demuxer). .ts
+            // plays natively and correctly in mpv/vlc/ffmpeg as-is.
+            extension = 'ts';
         }
 
         updateStatus('Preparing...');
-        triggerDownload(blob, 'video_720p.mp4');
+        const baseName = (NS.getVideoTitle ? NS.getVideoTitle() : null) || 'video_720p';
+        triggerDownload(blob, `${baseName}.${extension}`);
     }finally{
         NS.currentDownloadController = null;
     }

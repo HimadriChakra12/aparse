@@ -37,7 +37,7 @@ static const char *HEADER_TEMPLATE =
     "// ==UserScript==\n"
     "// @name         Apars Classroom HLS Saver\n"
     "// @namespace    apars-hls-saver\n"
-    "// @version      7.9.0"
+    "// @version      %s\n"
     "// @description  Download 720p HLS stream (forced level select + ffmpeg.wasm remux)\n"
     "// @match        https://*.aparsclassroom.com/*\n"
     "// @match        https://iframe.mediadelivery.net/*\n"

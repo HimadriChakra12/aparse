@@ -62,7 +62,7 @@ async function fetchAndBatch(ffmpeg, files, updateStatus, signal){
     }, (done, total, note) => {
         const pct = Math.round(done / total * 100);
         if(note) updateStatus(`${note} (${pct}%)`);
-        else updateStatus(`Downloading segment ${done}/${total} (${pct}%)`);
+        else updateStatus(`Downloading ${done}/${total} (${pct}%)`);
     }, signal);
 
     await flushBatch();

@@ -1,8 +1,10 @@
 (function(){
 const NS = window.__hlsSaver;
 
-const FFMPEG_CORE_URL = 'https://unpkg.com/@ffmpeg/core@0.12.6/dist/umd/ffmpeg-core.js';
+const FFMPEG_CORE_URL = 'https://unpkg.com/@ffmpeg/core@0.12.6/dist/esm/ffmpeg-core.js';
+const FFMPEG_CORE_WASM_URL = 'https://unpkg.com/@ffmpeg/core@0.12.6/dist/esm/ffmpeg-core.wasm';
 const FFMPEG_LIB_URL = 'https://unpkg.com/@ffmpeg/ffmpeg@0.12.10/dist/umd/ffmpeg.js';
+const FFMPEG_WORKER_CHUNK_URL = 'https://unpkg.com/@ffmpeg/ffmpeg@0.12.10/dist/umd/814.ffmpeg.js';
 
 let ffmpegLoadPromise = null;
 
@@ -16,15 +18,25 @@ function loadScript(src){
     });
 }
 
+async function toBlobURL(url, mimeType){
+    const res = await NS.pageWindow.fetch(url, {cache: 'no-store', credentials: 'omit'});
+    if(!res.ok) throw Error(`Failed to fetch ${url}: ${res.status}`);
+    const buf = await res.arrayBuffer();
+    return URL.createObjectURL(new Blob([buf], {type: mimeType}));
+}
+
 async function getFFmpeg(){
     if(ffmpegLoadPromise) return ffmpegLoadPromise;
     ffmpegLoadPromise = (async () => {
-        if(!window.FFmpegWASM){
+        if(!NS.pageWindow.FFmpegWASM){
             await loadScript(FFMPEG_LIB_URL);
         }
-        const {FFmpeg} = window.FFmpegWASM;
+        const {FFmpeg} = NS.pageWindow.FFmpegWASM;
         const ffmpeg = new FFmpeg();
-        await ffmpeg.load({coreURL: FFMPEG_CORE_URL});
+        const classWorkerURL = await toBlobURL(FFMPEG_WORKER_CHUNK_URL, 'text/javascript');
+        const coreURL = await toBlobURL(FFMPEG_CORE_URL, 'text/javascript');
+        const wasmURL = await toBlobURL(FFMPEG_CORE_WASM_URL, 'application/wasm');
+        await ffmpeg.load({coreURL, wasmURL, classWorkerURL});
         return ffmpeg;
     })();
     return ffmpegLoadPromise;

@@ -31,6 +31,23 @@ function findButton(){
     return b;
 }
 
+function getInfoLine(){
+    if(NS.infoLine && document.contains(NS.infoLine)) return NS.infoLine;
+    const card = document.querySelector('div.rounded-2xl');
+    if(!card) return null;
+    const line = document.createElement('div');
+    line.className = 'text-sm text-gray-500 dark:text-gray-400 mt-2';
+    line.dataset.hlsSaverInfo = '1';
+    card.appendChild(line);
+    NS.infoLine = line;
+    return line;
+}
+
+function updateInfo(text){
+    const line = getInfoLine();
+    if(line) line.textContent = text ? `[HLS Saver] ${text}` : '';
+}
+
 function updateButton(text){
     if(!NS.downloadButton) return;
     const spans = NS.downloadButton.querySelectorAll('span');
@@ -73,13 +90,21 @@ function attachButton(b){
 
         setBusy(true);
         updateButton('Preparing...');
+        updateInfo('Preparing...');
         try{
-            await NS.runDownload(selected.url, selected.text, updateButton);
+            await NS.runDownload(selected.url, selected.text, text => {
+                updateButton(text);
+                updateInfo(text);
+            });
             updateButton('Download');
+            updateInfo('Done.');
         }catch(err){
             console.error('[HLS Saver]', err);
             if(err?.message !== 'Cancelled'){
                 alert('HLS download failed:\n\n' + (err?.message || err));
+                updateInfo('Failed: ' + (err?.message || err));
+            }else{
+                updateInfo('Cancelled.');
             }
             updateButton('Download');
         }

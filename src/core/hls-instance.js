@@ -67,4 +67,17 @@ NS.deriveVariantUrlFromPattern = function(knownUrl, height){
     }catch{}
     return null;
 };
+
+NS.pauseAllPlayback = function(){
+    document.querySelectorAll('video').forEach(v => { try{ v.pause(); }catch(e){} });
+    for(const hls of NS.hlsInstances){
+        try{ hls.stopLoad(); }catch(e){}
+    }
+};
+
+NS.resumeAllPlayback = function(){
+    for(const hls of NS.hlsInstances){
+        try{ hls.startLoad(); }catch(e){}
+    }
+};
 })();

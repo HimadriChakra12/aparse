@@ -11,13 +11,24 @@ if(!NS.isTopFrame){
             window.top.postMessage({__hlsSaver: true, type: 'playlist', url, text}, '*');
         }catch(e){ NS.log('postMessage to top failed:', e); }
     };
-}else{
-    window.addEventListener('message', e => {
-        const d = e.data;
-        if(d && d.__hlsSaver === true && d.type === 'playlist'){
-            NS.log('Playlist received from iframe:', d.url);
-            NS.addPlaylist(d.url, d.text);
-        }
-    });
 }
+
+window.addEventListener('message', e => {
+    const d = e.data;
+    if(!d || d.__hlsSaver !== true) return;
+    if(d.type === 'playlist' && NS.isTopFrame){
+        NS.log('Playlist received from iframe:', d.url);
+        NS.addPlaylist(d.url, d.text);
+    }else if(d.type === 'pause-playback'){
+        NS.pauseAllPlayback();
+    }else if(d.type === 'resume-playback'){
+        NS.resumeAllPlayback();
+    }
+});
+
+NS.broadcastToFrames = function(type){
+    document.querySelectorAll('iframe').forEach(f => {
+        try{ f.contentWindow.postMessage({__hlsSaver: true, type}, '*'); }catch(e){}
+    });
+};
 })();

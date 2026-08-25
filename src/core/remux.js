@@ -58,12 +58,20 @@ NS.writeSegment = async function(ffmpeg, index, buffer){
     return name;
 };
 
-NS.finishRemux = async function(ffmpeg, names, signal){
+NS.finishRemux = async function(ffmpeg, names, onProgress, signal){
     if(signal?.aborted) throw Error('Cancelled');
     const concatList = names.map(n => `file '${n}'`).join('\n');
     await ffmpeg.writeFile('concat.txt', new TextEncoder().encode(concatList));
 
     if(signal?.aborted) throw Error('Cancelled');
+
+    if(onProgress){
+        ffmpeg.on('progress', ({progress}) => {
+            const pct = Math.max(0, Math.min(1, progress || 0));
+            onProgress(pct);
+        });
+    }
+
     await ffmpeg.exec(['-f', 'concat', '-safe', '0', '-i', 'concat.txt', '-c', 'copy', 'output.mp4']);
 
     for(const name of names){

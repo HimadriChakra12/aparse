@@ -29,20 +29,27 @@ NS.runDownload = async function(masterOrMediaUrl, masterOrMediaText, updateStatu
         const files = NS.parseMediaPlaylist(playlist.url, playlist.text);
         if(!files.length) throw Error('No media segments found.');
 
+        updateStatus('Loading ffmpeg.wasm...');
+        const ffmpeg = await NS.getFFmpeg();
+
         NS.log(`Downloading ${files.length} segments`);
-        const chunks = await NS.fetchAllSegments(files, (done, total, note) => {
+        const names = new Array(files.length);
+        await NS.fetchAllSegments(files, async (i, buffer) => {
+            names[i] = await NS.writeSegment(ffmpeg, i, buffer);
+        }, (done, total, note) => {
             if(note) updateStatus(`${note} (${Math.round(done / total * 100)}%)`);
             else updateStatus(`Downloading ${Math.round(done / total * 100)}%`);
         }, controller.signal);
 
         let blob;
         let extension = 'mp4';
+        updateStatus('Remuxing to MP4...');
         try{
-            blob = await NS.remuxToMp4(chunks, msg => updateStatus(msg), controller.signal);
+            blob = await NS.finishRemux(ffmpeg, names, controller.signal);
         }catch(e){
             NS.log('ffmpeg.wasm remux failed, falling back to raw concat:', e);
             updateStatus('Remux failed, using raw concat...');
-            blob = NS.rawConcatBlob(chunks);
+            blob = await NS.rawConcatFromFFmpeg(ffmpeg, names);
             extension = 'ts';
         }
 
@@ -51,6 +58,7 @@ NS.runDownload = async function(masterOrMediaUrl, masterOrMediaText, updateStatu
         triggerDownload(blob, `${baseName}.${extension}`);
     }finally{
         NS.currentDownloadController = null;
+        NS.terminateFFmpeg();
     }
 };
 })();

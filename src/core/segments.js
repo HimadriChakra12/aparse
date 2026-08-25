@@ -63,10 +63,9 @@ async function fetchSegmentWithRetry(descriptor, index, total, signal, onProgres
     throw Error(`Segment ${index + 1}/${total} failed after ${MAX_RETRIES} attempts: ${lastErr?.message || lastErr}`);
 }
 
-const CONCURRENCY = 6;
+const CONCURRENCY = 40;
 
-NS.fetchAllSegments = async function(files, onProgress, signal){
-    const chunks = new Array(files.length);
+NS.fetchAllSegments = async function(files, sink, onProgress, signal){
     let nextIndex = 0;
     let completed = 0;
 
@@ -75,8 +74,10 @@ NS.fetchAllSegments = async function(files, onProgress, signal){
             if(signal?.aborted) throw Error('Cancelled');
             const i = nextIndex++;
             if(i >= files.length) return;
-            chunks[i] = await fetchSegmentWithRetry(files[i], i, files.length, signal, onProgress);
+            const buffer = await fetchSegmentWithRetry(files[i], i, files.length, signal, onProgress);
+            await sink(i, buffer);
             completed++;
+            NS.log(`Segment ${completed}/${files.length} downloaded (${buffer.byteLength} bytes)`);
             if(onProgress) onProgress(completed, files.length);
         }
     }
@@ -84,7 +85,5 @@ NS.fetchAllSegments = async function(files, onProgress, signal){
     const workerCount = Math.min(CONCURRENCY, files.length);
     const workers = Array.from({length: workerCount}, () => worker());
     await Promise.all(workers);
-
-    return chunks;
 };
 })();

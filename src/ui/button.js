@@ -48,16 +48,23 @@ function updateInfo(text){
     if(line) line.textContent = text ? `[HLS Saver] ${text}` : '';
 }
 
-function updateButton(text){
-    if(!NS.downloadButton) return;
+function findStatusSpan(){
+    if(NS.statusSpan && NS.downloadButton.contains(NS.statusSpan)) return NS.statusSpan;
     const spans = NS.downloadButton.querySelectorAll('span');
     for(const s of spans){
         const v = s.textContent.trim().toLowerCase();
-        if(v === 'download' || /^(finding|downloading|preparing|writing|remuxing|loading|remux|retrying|cancelling)/.test(v)){
-            s.textContent = text;
-            return;
+        if(v === 'download' || /^(finding|downloading|preparing|writing|remuxing|loading|remux|retrying|cancelling|part|final)/.test(v)){
+            NS.statusSpan = s;
+            return s;
         }
     }
+    return null;
+}
+
+function updateButton(text){
+    if(!NS.downloadButton) return;
+    const span = findStatusSpan();
+    if(span) span.textContent = text;
 }
 
 function setBusy(v){

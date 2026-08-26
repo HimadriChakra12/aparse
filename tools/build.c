@@ -27,7 +27,7 @@ static const char *ORDER[] = {
     "src/core/hls-crypto.js",
     "src/core/segments.js",
     "src/core/remux.js",
-    "src/core/downloader.js",
+    "src/core/partdownloader.js",
     "src/ui/button.js",
     "src/core/entry.js",
 };

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Apars Classroom HLS Saver
 // @namespace    apars-aparse
-// @version      7.13.0
+// @version      7.14.0
 // @description  Download 720p HLS stream (forced level select + ffmpeg.wasm remux)
 // @match        https://*.aparsclassroom.com/*
 // @match        https://iframe.mediadelivery.net/*
@@ -600,11 +600,12 @@ NS.rawConcatFromFFmpeg = async function(ffmpeg, names){
 };
 })();
 
-// ---- core/downloader.js ----
+// ---- core/partdownloader.js ----
 (function(){
 const NS = window.__hlsSaver;
 
 const BATCH_SIZE = 50;
+const PART_SIZE = 750;
 
 function triggerDownload(blob, filename){
     const a = document.createElement('a');
@@ -665,11 +666,61 @@ async function fetchAndBatch(ffmpeg, files, updateStatus, signal){
     }, (done, total, note) => {
         const pct = Math.round(done / total * 100);
         if(note) updateStatus(`${note} (${pct}%)`);
-        else updateStatus(`Downloading ${done}/${total} (${pct}%)`);
+        else updateStatus(`Downloading segment ${done}/${total} (${pct}%)`);
     }, signal);
 
     await flushBatch();
     return names;
+}
+
+async function runPart(partFiles, partLabel, updateStatus, signal, outputName){
+    updateStatus(`${partLabel}: loading ffmpeg.wasm...`);
+    const ffmpeg = await NS.getFFmpeg();
+    try{
+        NS.log(`${partLabel}: downloading ${partFiles.length} segments`);
+        const names = await fetchAndBatch(ffmpeg, partFiles, (text) => updateStatus(`${partLabel}: ${text}`), signal);
+
+        try{
+            const blob = await NS.finishRemux(ffmpeg, names, pct => {
+                updateStatus(`${partLabel}: remuxing ${Math.round(pct * 100)}%`);
+            }, signal, outputName);
+            return {blob, extension: outputName.endsWith('.mp4') ? 'mp4' : 'ts'};
+        }catch(e){
+            NS.log(`${partLabel}: remux failed, falling back to raw concat:`, e);
+            updateStatus(`${partLabel}: remux failed, using raw concat...`);
+            return {blob: await NS.rawConcatFromFFmpeg(ffmpeg, names), extension: 'ts'};
+        }
+    }finally{
+        NS.terminateFFmpeg();
+    }
+}
+
+async function foldMerge(runningBlob, nextBlob, outputName, updateStatus, signal){
+    updateStatus('Merging: loading ffmpeg.wasm...');
+    const ffmpeg = await NS.getFFmpeg();
+    try{
+        updateStatus('Merging: writing running output...');
+        const runningBuf = await runningBlob.arrayBuffer();
+        await ffmpeg.writeFile('running.ts', new Uint8Array(runningBuf));
+
+        updateStatus('Merging: writing next part...');
+        const nextBuf = await nextBlob.arrayBuffer();
+        await ffmpeg.writeFile('next.ts', new Uint8Array(nextBuf));
+
+        const names = ['running.ts', 'next.ts'];
+        try{
+            const blob = await NS.finishRemux(ffmpeg, names, pct => {
+                updateStatus(`Merging: ${Math.round(pct * 100)}%`);
+            }, signal, outputName);
+            return {blob, extension: outputName.endsWith('.mp4') ? 'mp4' : 'ts'};
+        }catch(e){
+            NS.log('Merge failed, falling back to raw concat:', e);
+            updateStatus('Merge failed, using raw concat...');
+            return {blob: await NS.rawConcatFromFFmpeg(ffmpeg, names), extension: 'ts'};
+        }
+    }finally{
+        NS.terminateFFmpeg();
+    }
 }
 
 NS.runDownload = async function(masterOrMediaUrl, masterOrMediaText, updateStatus){
@@ -682,28 +733,40 @@ NS.runDownload = async function(masterOrMediaUrl, masterOrMediaText, updateStatu
         const files = NS.parseMediaPlaylist(playlist.url, playlist.text);
         if(!files.length) throw Error('No media segments found.');
 
-        updateStatus('Loading ffmpeg.wasm...');
-        const ffmpeg = await NS.getFFmpeg();
+        const baseName = (NS.getVideoTitle ? NS.getVideoTitle() : null) || 'video_720p';
+        const partCount = Math.ceil(files.length / PART_SIZE);
+        NS.log(`Downloading ${files.length} segments in ${partCount} part(s) of up to ${PART_SIZE} segments each`);
 
-        NS.log(`Downloading ${files.length} segments`);
-        const names = await fetchAndBatch(ffmpeg, files, updateStatus, controller.signal);
+        let blob, extension;
+        if(partCount === 1){
+            const partFiles = files.slice(0, PART_SIZE);
+            const result = await runPart(partFiles, 'Download', updateStatus, controller.signal, 'output.mp4');
+            blob = result.blob;
+            extension = result.extension;
+        }else{
+            let runningBlob = null;
+            for(let p = 0; p < partCount; p++){
+                if(controller.signal.aborted) throw Error('Cancelled');
+                const partFiles = files.slice(p * PART_SIZE, (p + 1) * PART_SIZE);
+                const partLabel = `Part ${p + 1}/${partCount}`;
+                const result = await runPart(partFiles, partLabel, updateStatus, controller.signal, 'part.ts');
 
-        let blob;
-        let extension = 'mp4';
-        try{
-            blob = await NS.finishRemux(ffmpeg, names, pct => {
-                updateStatus(`Remuxing ${Math.round(pct * 100)}%`);
-            }, controller.signal);
-        }catch(e){
-            NS.log('ffmpeg.wasm remux failed, falling back to raw concat:', e);
-            updateStatus('Remux failed, using raw concat...');
-            blob = await NS.rawConcatFromFFmpeg(ffmpeg, names);
-            extension = 'ts';
+                if(runningBlob === null){
+                    runningBlob = result.blob;
+                }else{
+                    const isLast = (p === partCount - 1);
+                    const outputName = isLast ? 'output.mp4' : 'merged.ts';
+                    const merged = await foldMerge(runningBlob, result.blob, outputName, updateStatus, controller.signal);
+                    runningBlob = merged.blob;
+                    extension = merged.extension;
+                }
+            }
+            blob = runningBlob;
         }
 
         updateStatus('Preparing...');
-        const baseName = (NS.getVideoTitle ? NS.getVideoTitle() : null) || 'video_720p';
         triggerDownload(blob, `${baseName}.${extension}`);
+        updateStatus('Done.');
     }finally{
         NS.currentDownloadController = null;
         NS.terminateFFmpeg();
@@ -764,16 +827,23 @@ function updateInfo(text){
     if(line) line.textContent = text ? `[HLS Saver] ${text}` : '';
 }
 
-function updateButton(text){
-    if(!NS.downloadButton) return;
+function findStatusSpan(){
+    if(NS.statusSpan && NS.downloadButton.contains(NS.statusSpan)) return NS.statusSpan;
     const spans = NS.downloadButton.querySelectorAll('span');
     for(const s of spans){
         const v = s.textContent.trim().toLowerCase();
-        if(v === 'download' || /^(finding|downloading|preparing|writing|remuxing|loading|remux|retrying|cancelling)/.test(v)){
-            s.textContent = text;
-            return;
+        if(v === 'download' || /^(finding|downloading|preparing|writing|remuxing|loading|remux|retrying|cancelling|part|final)/.test(v)){
+            NS.statusSpan = s;
+            return s;
         }
     }
+    return null;
+}
+
+function updateButton(text){
+    if(!NS.downloadButton) return;
+    const span = findStatusSpan();
+    if(span) span.textContent = text;
 }
 
 function setBusy(v){

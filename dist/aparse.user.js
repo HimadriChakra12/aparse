@@ -556,13 +556,24 @@ NS.terminateFFmpeg = function(){
     ffmpegLoadPromise = null;
 };
 
+const BLOB_PART_LIMIT = 1024 * 1024 * 1024;
+
+function toBlobParts(u8){
+    const parts = [];
+    for(let offset = 0; offset < u8.length; offset += BLOB_PART_LIMIT){
+        parts.push(u8.subarray(offset, Math.min(offset + BLOB_PART_LIMIT, u8.length)));
+    }
+    return parts;
+}
+
 NS.writeSegment = async function(ffmpeg, index, buffer){
     const name = `seg${String(index).padStart(5, '0')}.ts`;
     await ffmpeg.writeFile(name, new Uint8Array(buffer));
     return name;
 };
 
-NS.finishRemux = async function(ffmpeg, names, onProgress, signal){
+NS.finishRemux = async function(ffmpeg, names, onProgress, signal, outputName){
+    outputName = outputName || 'output.mp4';
     if(signal?.aborted) throw Error('Cancelled');
     const concatList = names.map(n => `file '${n}'`).join('\n');
     await ffmpeg.writeFile('concat.txt', new TextEncoder().encode(concatList));
@@ -576,16 +587,17 @@ NS.finishRemux = async function(ffmpeg, names, onProgress, signal){
         });
     }
 
-    await ffmpeg.exec(['-f', 'concat', '-safe', '0', '-i', 'concat.txt', '-c', 'copy', 'output.mp4']);
+    await ffmpeg.exec(['-f', 'concat', '-safe', '0', '-i', 'concat.txt', '-c', 'copy', outputName]);
 
     for(const name of names){
         try{ await ffmpeg.deleteFile(name); }catch(e){}
     }
     try{ await ffmpeg.deleteFile('concat.txt'); }catch(e){}
 
-    const data = await ffmpeg.readFile('output.mp4');
-    const blob = new Blob([data.buffer], {type: 'video/mp4'});
-    try{ await ffmpeg.deleteFile('output.mp4'); }catch(e){}
+    const data = await ffmpeg.readFile(outputName);
+    const mime = outputName.endsWith('.mp4') ? 'video/mp4' : 'video/mp2t';
+    const blob = new Blob(toBlobParts(data), {type: mime});
+    try{ await ffmpeg.deleteFile(outputName); }catch(e){}
     return blob;
 };
 
@@ -593,7 +605,7 @@ NS.rawConcatFromFFmpeg = async function(ffmpeg, names){
     const parts = [];
     for(const name of names){
         const data = await ffmpeg.readFile(name);
-        parts.push(data.buffer ? data.buffer : data);
+        parts.push(...toBlobParts(data));
         try{ await ffmpeg.deleteFile(name); }catch(e){}
     }
     return new Blob(parts, {type: 'video/mp2t'});

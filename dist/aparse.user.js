@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Apars Classroom HLS Saver
 // @namespace    apars-aparse
-// @version      7.14.0
+// @version      7.14.1
 // @description  Download 720p HLS stream (forced level select + ffmpeg.wasm remux)
 // @match        https://*.aparsclassroom.com/*
 // @match        https://iframe.mediadelivery.net/*
